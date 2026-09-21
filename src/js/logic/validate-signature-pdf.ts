@@ -10,32 +10,36 @@ export function extractSignatures(pdfBytes: Uint8Array): ExtractedSignature[] {
   const signatures: ExtractedSignature[] = [];
   const pdfString = new TextDecoder('latin1').decode(pdfBytes);
 
-  // Find all signature objects for /Type /Sig
-  const sigRegex = /\/Type\s*\/Sig\b/g;
-  let sigMatch;
+  // A signature dictionary is identified by its /ByteRange plus /Contents keys.
+  // /Type is optional for signature dictionaries (PDF 32000-1, 12.8.1) and
+  // document timestamps use /Type /DocTimeStamp, so /Type cannot be the anchor.
+  if (!pdfString.includes('/ByteRange')) return signatures;
+
+  const byteRangeRegex = /\/ByteRange\s*\[/g;
+  const objectSpans = findObjectSpans(pdfString);
+  const visitedObjects = new Set<number>();
+  let byteRangeMatch;
   let sigIndex = 0;
 
-  while ((sigMatch = sigRegex.exec(pdfString)) !== null) {
+  while ((byteRangeMatch = byteRangeRegex.exec(pdfString)) !== null) {
     try {
-      const searchStart = Math.max(0, sigMatch.index - 5000);
-      const searchEnd = Math.min(pdfString.length, sigMatch.index + 10000);
-      const context = pdfString.substring(searchStart, searchEnd);
-      const byteRangeMatch = context.match(
-        /\/ByteRange\s*\[\s*(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s*\]/
-      );
-      if (!byteRangeMatch) continue;
+      // Scan the whole enclosing object: the /Contents placeholder reserved by
+      // real signers is routinely 4-40 KB, so a fixed-size window around the
+      // match drops the sibling keys and the signature goes unnoticed.
+      const span = findEnclosingSpan(objectSpans, byteRangeMatch.index);
+      if (!span || visitedObjects.has(span.start)) continue;
+      visitedObjects.add(span.start);
 
-      const byteRange = [
-        parseInt(byteRangeMatch[1], 10),
-        parseInt(byteRangeMatch[2], 10),
-        parseInt(byteRangeMatch[3], 10),
-        parseInt(byteRangeMatch[4], 10),
-      ];
+      const context = pdfString.substring(span.start, span.end);
 
-      const contentsMatch = context.match(/\/Contents\s*<([0-9A-Fa-f]+)>/);
+      const byteRange = parseByteRange(context);
+      if (!byteRange) continue;
+
+      const contentsMatch = context.match(/\/Contents\s*<([0-9A-Fa-f\s]*)>/);
       if (!contentsMatch) continue;
 
-      const hexContents = contentsMatch[1];
+      const hexContents = contentsMatch[1].replace(/\s+/g, '');
+      if (hexContents.length === 0) continue;
       const contentsBytes = hexToBytes(hexContents);
 
       const reasonMatch = context.match(/\/Reason\s*\(([^)]*)\)/);
@@ -55,16 +59,14 @@ export function extractSignatures(pdfBytes: Uint8Array): ExtractedSignature[] {
         index: sigIndex++,
         contents: contentsBytes,
         byteRange,
-        reason: reasonMatch
-          ? decodeURIComponent(escape(reasonMatch[1]))
-          : undefined,
+        reason: reasonMatch ? decodePdfTextString(reasonMatch[1]) : undefined,
         location: locationMatch
-          ? decodeURIComponent(escape(locationMatch[1]))
+          ? decodePdfTextString(locationMatch[1])
           : undefined,
         contactInfo: contactMatch
-          ? decodeURIComponent(escape(contactMatch[1]))
+          ? decodePdfTextString(contactMatch[1])
           : undefined,
-        name: nameMatch ? decodeURIComponent(escape(nameMatch[1])) : undefined,
+        name: nameMatch ? decodePdfTextString(nameMatch[1]) : undefined,
         signingTime,
       });
     } catch (e) {
@@ -73,6 +75,81 @@ export function extractSignatures(pdfBytes: Uint8Array): ExtractedSignature[] {
   }
 
   return signatures;
+}
+
+interface PdfObjectSpan {
+  start: number;
+  end: number;
+}
+
+/**
+ * Body boundaries of every indirect object in the file, later revisions of an
+ * incrementally updated document included.
+ */
+function findObjectSpans(pdfString: string): PdfObjectSpan[] {
+  const spans: PdfObjectSpan[] = [];
+  const headerRegex = /\d+\s+\d+\s+obj\b/g;
+  let headerMatch;
+
+  while ((headerMatch = headerRegex.exec(pdfString)) !== null) {
+    const start = headerMatch.index + headerMatch[0].length;
+    const endObj = pdfString.indexOf('endobj', start);
+    spans.push({ start, end: endObj === -1 ? pdfString.length : endObj });
+  }
+
+  return spans;
+}
+
+function findEnclosingSpan(
+  spans: PdfObjectSpan[],
+  index: number
+): PdfObjectSpan | null {
+  let low = 0;
+  let high = spans.length - 1;
+  let candidate = -1;
+
+  while (low <= high) {
+    const mid = (low + high) >> 1;
+    if (spans[mid].start <= index) {
+      candidate = mid;
+      low = mid + 1;
+    } else {
+      high = mid - 1;
+    }
+  }
+
+  if (candidate === -1) return null;
+  const span = spans[candidate];
+  return index < span.end ? span : null;
+}
+
+/**
+ * Text strings of a signature dictionary are either UTF-8 or PDFDocEncoded
+ * (Latin-1 compatible). `escape` + `decodeURIComponent` recovers the UTF-8
+ * case but raises a URIError on the Latin-1 one, which used to abort the
+ * extraction of the whole signature.
+ */
+function decodePdfTextString(raw: string): string {
+  try {
+    return decodeURIComponent(escape(raw));
+  } catch {
+    return raw;
+  }
+}
+
+function parseByteRange(context: string): number[] | null {
+  const arrayMatch = context.match(/\/ByteRange\s*\[([^\]]*)\]/);
+  if (!arrayMatch) return null;
+
+  const entries = arrayMatch[1].trim().split(/\s+/).filter(Boolean);
+  if (entries.length < 4) return null;
+
+  const byteRange = entries.map((entry) => parseInt(entry, 10));
+  if (byteRange.some((value) => !Number.isFinite(value) || value < 0)) {
+    return null;
+  }
+
+  return byteRange;
 }
 
 export async function validateSignature(
