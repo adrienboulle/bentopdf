@@ -15,27 +15,24 @@ export function extractSignatures(pdfBytes: Uint8Array): ExtractedSignature[] {
   // document timestamps use /Type /DocTimeStamp, so /Type cannot be the anchor.
   if (!pdfString.includes('/ByteRange')) return signatures;
 
-  const byteRangeRegex = /\/ByteRange\s*\[/g;
-  const objectSpans = findObjectSpans(pdfString);
-  const visitedObjects = new Set<number>();
-  let byteRangeMatch;
   let sigIndex = 0;
 
-  while ((byteRangeMatch = byteRangeRegex.exec(pdfString)) !== null) {
+  // Walk the indirect objects rather than the raw file: stream bodies are left
+  // out of the spans and literal strings are masked before looking for the
+  // keys, so "/ByteRange" inside page content or a /Reason string is not
+  // mistaken for a signature dictionary. Scanning the whole object matters
+  // too: the /Contents placeholder reserved by real signers is routinely
+  // 4-40 KB, so a fixed-size window around the match drops the sibling keys.
+  for (const span of findObjectSpans(pdfString)) {
     try {
-      // Scan the whole enclosing object: the /Contents placeholder reserved by
-      // real signers is routinely 4-40 KB, so a fixed-size window around the
-      // match drops the sibling keys and the signature goes unnoticed.
-      const span = findEnclosingSpan(objectSpans, byteRangeMatch.index);
-      if (!span || visitedObjects.has(span.start)) continue;
-      visitedObjects.add(span.start);
-
       const context = pdfString.substring(span.start, span.end);
+      if (!context.includes('/ByteRange')) continue;
 
-      const byteRange = parseByteRange(context);
+      const keys = maskLiteralStrings(context);
+      const byteRange = parseByteRange(keys);
       if (!byteRange) continue;
 
-      const contentsMatch = context.match(/\/Contents\s*<([0-9A-Fa-f\s]*)>/);
+      const contentsMatch = keys.match(/\/Contents\s*<([0-9A-Fa-f\s]*)>/);
       if (!contentsMatch) continue;
 
       const hexContents = contentsMatch[1].replace(/\s+/g, '');
@@ -83,44 +80,69 @@ interface PdfObjectSpan {
 }
 
 /**
- * Body boundaries of every indirect object in the file, later revisions of an
- * incrementally updated document included.
+ * Dictionary part of every indirect object in the file, later revisions of an
+ * incrementally updated document included. A stream object's span stops at
+ * its `stream` keyword and the stream body is skipped up to `endstream`, so
+ * arbitrary bytes in page content cannot open or close an object. One
+ * forward pass: a malformed file with many headers and no `endobj` is linear,
+ * not quadratic (the tool runs on the page thread).
  */
 function findObjectSpans(pdfString: string): PdfObjectSpan[] {
   const spans: PdfObjectSpan[] = [];
-  const headerRegex = /\d+\s+\d+\s+obj\b/g;
-  let headerMatch;
+  const tokenRegex = /(\d+\s+\d+\s+obj\b)|(endobj)|(\bstream\b)/g;
+  let open: number | null = null;
+  let token;
 
-  while ((headerMatch = headerRegex.exec(pdfString)) !== null) {
-    const start = headerMatch.index + headerMatch[0].length;
-    const endObj = pdfString.indexOf('endobj', start);
-    spans.push({ start, end: endObj === -1 ? pdfString.length : endObj });
-  }
-
-  return spans;
-}
-
-function findEnclosingSpan(
-  spans: PdfObjectSpan[],
-  index: number
-): PdfObjectSpan | null {
-  let low = 0;
-  let high = spans.length - 1;
-  let candidate = -1;
-
-  while (low <= high) {
-    const mid = (low + high) >> 1;
-    if (spans[mid].start <= index) {
-      candidate = mid;
-      low = mid + 1;
+  while ((token = tokenRegex.exec(pdfString)) !== null) {
+    if (token[1]) {
+      if (open !== null) spans.push({ start: open, end: token.index });
+      open = token.index + token[0].length;
+    } else if (token[2]) {
+      if (open !== null) spans.push({ start: open, end: token.index });
+      open = null;
     } else {
-      high = mid - 1;
+      if (open !== null) spans.push({ start: open, end: token.index });
+      open = null;
+      const endStream = pdfString.indexOf('endstream', tokenRegex.lastIndex);
+      if (endStream === -1) break;
+      tokenRegex.lastIndex = endStream + 'endstream'.length;
     }
   }
 
-  if (candidate === -1) return null;
-  const span = spans[candidate];
-  return index < span.end ? span : null;
+  if (open !== null) spans.push({ start: open, end: pdfString.length });
+  return spans;
+}
+
+/**
+ * Blanks the inside of literal strings `( ... )`, honouring backslash escapes
+ * and balanced nested parentheses, so dictionary keys are only matched
+ * outside string values. Length and positions are preserved.
+ */
+function maskLiteralStrings(text: string): string {
+  if (!text.includes('(')) return text;
+
+  const out = text.split('');
+  let depth = 0;
+  for (let i = 0; i < out.length; i++) {
+    const c = out[i];
+    if (depth === 0) {
+      if (c === '(') depth = 1;
+      continue;
+    }
+    if (c === '\\') {
+      out[i] = ' ';
+      if (i + 1 < out.length) out[++i] = ' ';
+    } else if (c === '(') {
+      depth++;
+      out[i] = ' ';
+    } else if (c === ')') {
+      depth--;
+      if (depth > 0) out[i] = ' ';
+    } else {
+      out[i] = ' ';
+    }
+  }
+  return out.join('');
 }
 
 /**
@@ -137,12 +159,17 @@ function decodePdfTextString(raw: string): string {
   }
 }
 
+/**
+ * /ByteRange is an array of offset/length pairs: two pairs in practice, but
+ * any even count of at least four entries is well-formed, and coverage and
+ * verification below walk every pair.
+ */
 function parseByteRange(context: string): number[] | null {
   const arrayMatch = context.match(/\/ByteRange\s*\[([^\]]*)\]/);
   if (!arrayMatch) return null;
 
   const entries = arrayMatch[1].trim().split(/\s+/).filter(Boolean);
-  if (entries.length < 4) return null;
+  if (entries.length < 4 || entries.length % 2 !== 0) return null;
 
   const byteRange = entries.map((entry) => parseInt(entry, 10));
   if (byteRange.some((value) => !Number.isFinite(value) || value < 0)) {
@@ -304,9 +331,10 @@ export async function validateSignature(
       }
     }
 
-    if (signature.byteRange && signature.byteRange.length === 4) {
-      const [, , start2, len2] = signature.byteRange;
-      const expectedEnd = start2 + len2;
+    if (signature.byteRange && signature.byteRange.length >= 4) {
+      const lastStart = signature.byteRange[signature.byteRange.length - 2];
+      const lastLength = signature.byteRange[signature.byteRange.length - 1];
+      const expectedEnd = lastStart + lastLength;
 
       if (expectedEnd === pdfBytes.length) {
         result.coverageStatus = 'full';
@@ -767,7 +795,7 @@ async function performCryptoVerification(
   if (!fields) {
     return { status: 'failed', reason: 'Could not parse signer info' };
   }
-  if (byteRange.length !== 4) {
+  if (byteRange.length < 4 || byteRange.length % 2 !== 0) {
     return { status: 'failed', reason: 'Malformed ByteRange' };
   }
 
@@ -779,21 +807,24 @@ async function performCryptoVerification(
     };
   }
 
-  const [start1, len1, start2, len2] = byteRange;
-  if (
-    start1 < 0 ||
-    len1 < 0 ||
-    start2 < 0 ||
-    len2 < 0 ||
-    start1 + len1 > pdfBytes.length ||
-    start2 + len2 > pdfBytes.length
-  ) {
-    return { status: 'failed', reason: 'ByteRange out of bounds' };
+  let signedLength = 0;
+  for (let i = 0; i < byteRange.length; i += 2) {
+    const start = byteRange[i];
+    const length = byteRange[i + 1];
+    if (start < 0 || length < 0 || start + length > pdfBytes.length) {
+      return { status: 'failed', reason: 'ByteRange out of bounds' };
+    }
+    signedLength += length;
   }
 
-  const signedContent = new Uint8Array(len1 + len2);
-  signedContent.set(pdfBytes.subarray(start1, start1 + len1), 0);
-  signedContent.set(pdfBytes.subarray(start2, start2 + len2), len1);
+  const signedContent = new Uint8Array(signedLength);
+  let offset = 0;
+  for (let i = 0; i < byteRange.length; i += 2) {
+    const start = byteRange[i];
+    const length = byteRange[i + 1];
+    signedContent.set(pdfBytes.subarray(start, start + length), offset);
+    offset += length;
+  }
 
   md.update(uint8ToLatin1(signedContent));
   const contentHashBytes = md.digest().bytes();

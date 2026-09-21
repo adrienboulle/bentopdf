@@ -206,6 +206,77 @@ describe('extractSignatures', () => {
     expect(extractSignatures(bytes)).toEqual([]);
   });
 
+  it('ignores signature-looking text inside a content stream', () => {
+    const decoy = enc.encode(
+      `BT /F1 12 Tf 72 700 Td (${signatureDict({ hexLength: 400 })}) Tj ET`
+    );
+    const bytes = buildPdf([
+      { body: '<< /Type /Catalog /Pages 2 0 R >>' },
+      { body: '<< /Type /Pages /Kids [3 0 R] /Count 1 >>' },
+      {
+        body:
+          '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] ' +
+          '/Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>',
+      },
+      { body: helvetica() },
+      { body: `<< /Length ${decoy.length} >>`, stream: decoy },
+    ]);
+
+    expect(extractSignatures(bytes)).toEqual([]);
+    expect(countSignatures(bytes)).toBe(0);
+  });
+
+  it('ignores signature-looking text inside a literal string', () => {
+    const bytes = buildPdfWithSignatures([
+      `<< /Type /Annot /T (note: ${signatureDict({ hexLength: 400 })}) >>`,
+    ]);
+
+    expect(extractSignatures(bytes)).toEqual([]);
+  });
+
+  it('reads the keys outside a string that mimics them', () => {
+    const bytes = buildPdfWithSignatures([
+      signatureDict({
+        extraKeys: '/Reason (fake /ByteRange [1 2 3 4] /Contents <ffff>)',
+      }),
+    ]);
+
+    const signatures = extractSignatures(bytes);
+    expect(signatures).toHaveLength(1);
+    expect(signatures[0].byteRange).toEqual([0, 840, 24960, 1180]);
+    expect(signatures[0].reason).toBe(
+      'fake /ByteRange [1 2 3 4] /Contents <ffff>'
+    );
+  });
+
+  it('rejects a /ByteRange with an odd number of entries', () => {
+    const bytes = buildPdfWithSignatures([
+      `<< /Type /Sig /ByteRange [0 840 24960] /Contents <${placeholder(400)}> >>`,
+    ]);
+
+    expect(extractSignatures(bytes)).toEqual([]);
+  });
+
+  it('accepts a /ByteRange with more than two pairs', () => {
+    const bytes = buildPdfWithSignatures([
+      `<< /Type /Sig /ByteRange [0 100 300 100 600 100] /Contents <${placeholder(400)}> >>`,
+    ]);
+
+    const signatures = extractSignatures(bytes);
+    expect(signatures).toHaveLength(1);
+    expect(signatures[0].byteRange).toEqual([0, 100, 300, 100, 600, 100]);
+  });
+
+  it('stays linear on a file full of unterminated object headers', () => {
+    const bytes = enc.encode(
+      '%PDF-1.7\n' + '1 0 obj\n<< /ByteRange [0 1 2 3] >>\n'.repeat(20000)
+    );
+
+    const started = performance.now();
+    expect(extractSignatures(bytes)).toEqual([]);
+    expect(performance.now() - started).toBeLessThan(2000);
+  });
+
   it('reports each signature only once per object', () => {
     const bytes = buildPdfWithSignatures([signatureDict({})]);
 
