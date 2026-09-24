@@ -209,6 +209,7 @@ export default defineConfig({
                     items: [
                         { text: 'Getting Started', link: '/getting-started' },
                         { text: 'Tools Reference', link: '/tools/' },
+                        { text: 'Destinations', link: '/destinations' },
                         { text: 'Self-Hosting', link: '/self-hosting/' },
                         { text: 'Contributing', link: '/contributing' },
                         { text: 'Commercial License', link: '/licensing' }

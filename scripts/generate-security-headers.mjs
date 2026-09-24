@@ -47,12 +47,20 @@ const corsProxyOrigin =
 const ocrFontOrigin =
   originOf(process.env.VITE_OCR_FONT_BASE_URL) || DEFAULT_OCR_FONT_CDN_ORIGIN;
 
+// Comma-separated list of origins results may be uploaded to (Destinations).
+const destinationOrigins = uniq(
+  (process.env.VITE_DESTINATION_HOSTS || '')
+    .split(',')
+    .map((value) => originOf(value.trim()))
+);
+
 const scriptOrigins = uniq([...wasmOrigins, ...tesseractOrigins]);
 const connectOrigins = uniq([
   ...wasmOrigins,
   ...tesseractOrigins,
   corsProxyOrigin,
   ocrFontOrigin,
+  ...destinationOrigins,
 ]);
 const fontOrigins = uniq([ocrFontOrigin].filter(Boolean));
 

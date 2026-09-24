@@ -139,6 +139,8 @@
     "compactModeDescription": "Display tools as a compact list instead of cards",
     "advancedSettings": "Advanced Settings",
     "advancedSettingsDescription": "Configure external processing modules (PyMuPDF, Ghostscript, CoherentPDF)",
+    "destinations": "Destinations",
+    "destinationsDescription": "Send results to your own HTTP endpoint instead of downloading them",
     "settingsAutoSaved": "Settings are automatically saved",
     "clickToSet": "Click to set",
     "pressKeys": "Press keys...",

@@ -6,6 +6,8 @@ import { state, resetState } from '../state.js';
 import * as pdfjsLib from 'pdfjs-dist';
 import DOMPurify from 'dompurify';
 import type { DocumentInitParameters } from 'pdfjs-dist/types/src/display/api';
+import { deliverToActiveDestination } from './destination-sender.js';
+import { triggerBrowserDownload } from './browser-download.js';
 
 const STANDARD_SIZES = {
   A4: { width: 595.28, height: 841.89 },
@@ -72,14 +74,12 @@ export const formatBytes = (bytes: number, decimals = 1) => {
 };
 
 export const downloadFile = (blob: Blob, filename: string): void => {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  // A configured destination can receive the result instead of, or in
+  // addition to, the browser download, or ask what to do with it. No
+  // destination: nothing changes.
+  if (deliverToActiveDestination(blob, filename)) return;
+
+  triggerBrowserDownload(blob, filename);
 };
 
 export const readFileAsArrayBuffer = (

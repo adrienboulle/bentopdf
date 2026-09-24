@@ -1,0 +1,496 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!-- Primary Meta Tags -->
+    <title>Destinations Settings - Send Results by HTTP | BentoPDF</title>
+    <meta
+      name="title"
+      content="Destinations Settings - Send Results by HTTP | BentoPDF"
+    />
+    <meta
+      name="description"
+      content="Configure destinations for BentoPDF. Send processed files to your own HTTP endpoint instead of, or in addition to, downloading them."
+    />
+    <meta
+      name="keywords"
+      content="destinations, webhook, webdav, upload, pdf automation"
+    />
+    <meta name="author" content="BentoPDF" />
+    <meta name="robots" content="noindex, nofollow" />
+
+    <!-- Canonical URL -->
+    <link
+      rel="canonical"
+      href="https://www.bentopdf.com/destination-settings"
+    />
+
+    <!-- Mobile Web App -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Destinations" />
+
+    <link href="/src/css/styles.css" rel="stylesheet" />
+
+    <!-- Web App Manifest -->
+    <link rel="manifest" href="/site.webmanifest" />
+
+    <!-- Favicons -->
+    <link rel="icon" type="image/svg+xml" href="/images/favicon.svg" />
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="192x192"
+      href="/images/favicon-192x192.png"
+    />
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="512x512"
+      href="/images/favicon-512x512.png"
+    />
+    <link
+      rel="apple-touch-icon"
+      sizes="180x180"
+      href="/images/apple-touch-icon.png"
+    />
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
+  </head>
+
+  <body class="antialiased bg-gray-900">
+    {{> navbar }}
+
+    <div
+      id="uploader"
+      class="min-h-screen flex flex-col items-center justify-start py-12 p-4 bg-gray-900"
+    >
+      <div
+        id="tool-uploader"
+        class="bg-gray-800 rounded-xl shadow-xl px-4 py-8 md:p-8 max-w-2xl w-full text-gray-200 border border-gray-700"
+      >
+        <button
+          id="back-to-tools"
+          class="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 mb-6 font-semibold"
+        >
+          <i data-lucide="arrow-left" class="cursor-pointer"></i>
+          <span class="cursor-pointer" data-i18n="tools.backToTools">
+            Back to Tools
+          </span>
+        </button>
+
+        <h1
+          class="text-2xl font-bold text-white mb-2"
+          data-i18n="tools:destinationSettings.title"
+        >
+          Destinations
+        </h1>
+        <p
+          class="text-gray-400 mb-6"
+          data-i18n="tools:destinationSettings.description"
+        >
+          Send the result of a tool to your own HTTP endpoint instead of, or in
+          addition to, downloading it. Files are still processed in your
+          browser; only the finished result is uploaded.
+        </p>
+
+        <!-- Security Warning -->
+        <div
+          class="bg-amber-900/30 border border-amber-600/50 rounded-lg p-4 mb-6"
+        >
+          <div class="flex items-start gap-3">
+            <i
+              data-lucide="alert-triangle"
+              class="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5"
+            ></i>
+            <div>
+              <p class="text-amber-200 text-sm">
+                <strong data-i18n="tools:destinationSettings.warningTitle"
+                  >Credentials are stored in this browser.</strong
+                >
+                <span data-i18n="tools:destinationSettings.warningDescription"
+                  >Header values, including API tokens and Basic authorization
+                  headers, are saved unencrypted in this browser's local
+                  storage. Anyone with access to this browser profile can read
+                  them. Use a token scoped to uploads only, and clear the
+                  destination on a shared computer.</span
+                >
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Global Settings -->
+        <div
+          class="bg-gray-700/50 rounded-lg p-4 border border-gray-600 mb-6 space-y-4"
+        >
+          <div>
+            <label
+              for="active-destination"
+              class="block text-sm font-medium text-gray-300 mb-1"
+              data-i18n="tools:destinationSettings.activeLabel"
+            >
+              Active destination
+            </label>
+            <select
+              id="active-destination"
+              class="w-full bg-gray-700 border border-gray-600 text-white rounded-lg p-2.5 focus:ring-indigo-500 focus:border-indigo-500"
+            >
+              <option value="" data-i18n="tools:destinationSettings.activeNone">
+                None (download only)
+              </option>
+            </select>
+          </div>
+          <div>
+            <label
+              for="default-action"
+              class="block text-sm font-medium text-gray-300 mb-1"
+              data-i18n="tools:destinationSettings.defaultActionLabel"
+            >
+              Default action for a new destination
+            </label>
+            <select
+              id="default-action"
+              class="w-full bg-gray-700 border border-gray-600 text-white rounded-lg p-2.5 focus:ring-indigo-500 focus:border-indigo-500"
+            >
+              <option
+                value="download"
+                data-i18n="tools:destinationSettings.mode.download"
+              >
+                Download only
+              </option>
+              <option
+                value="send"
+                data-i18n="tools:destinationSettings.mode.send"
+              >
+                Send only
+              </option>
+              <option
+                value="both"
+                data-i18n="tools:destinationSettings.mode.both"
+              >
+                Download and send
+              </option>
+              <option
+                value="ask"
+                data-i18n="tools:destinationSettings.mode.ask"
+              >
+                Ask every time
+              </option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Destination List -->
+        <div class="flex items-center justify-between mb-3">
+          <h2
+            class="font-semibold text-white"
+            data-i18n="tools:destinationSettings.listTitle"
+          >
+            Configured destinations
+          </h2>
+          <button
+            id="add-destination"
+            class="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded-lg text-sm font-medium transition-colors"
+            data-i18n="tools:destinationSettings.addButton"
+          >
+            Add destination
+          </button>
+        </div>
+        <div id="destination-list" class="space-y-3"></div>
+        <p
+          id="destination-empty"
+          class="text-sm text-gray-500"
+          data-i18n="tools:destinationSettings.emptyList"
+        >
+          No destination configured. Results are downloaded as usual.
+        </p>
+
+        <!-- Editor -->
+        <div
+          id="destination-editor"
+          class="hidden bg-gray-700/50 rounded-lg p-4 border border-gray-600 mt-6 space-y-4"
+        >
+          <h3
+            id="editor-title"
+            class="font-semibold text-white"
+            data-i18n="tools:destinationSettings.editorTitle"
+          >
+            Destination
+          </h3>
+
+          <div>
+            <label
+              for="destination-name"
+              class="block text-sm font-medium text-gray-300 mb-1"
+              data-i18n="tools:destinationSettings.nameLabel"
+            >
+              Name
+            </label>
+            <input
+              type="text"
+              id="destination-name"
+              placeholder="Document manager"
+              data-i18n-placeholder="tools:destinationSettings.namePlaceholder"
+              class="w-full bg-gray-700 border border-gray-600 text-white rounded-lg p-2.5 text-sm"
+            />
+          </div>
+
+          <div>
+            <label
+              for="destination-url"
+              class="block text-sm font-medium text-gray-300 mb-1"
+              data-i18n="tools:destinationSettings.urlLabel"
+            >
+              URL (https only)
+            </label>
+            <input
+              type="url"
+              id="destination-url"
+              placeholder="https://documents.example.com/api/documents/post_document/"
+              class="w-full bg-gray-700 border border-gray-600 text-white rounded-lg p-2.5 text-sm"
+            />
+          </div>
+
+          <div class="grid gap-4 md:grid-cols-2">
+            <div>
+              <label
+                for="destination-method"
+                class="block text-sm font-medium text-gray-300 mb-1"
+                data-i18n="tools:destinationSettings.methodLabel"
+              >
+                Method
+              </label>
+              <select
+                id="destination-method"
+                class="w-full bg-gray-700 border border-gray-600 text-white rounded-lg p-2.5 focus:ring-indigo-500 focus:border-indigo-500"
+              >
+                <option
+                  value="POST"
+                  data-i18n="tools:destinationSettings.methodPost"
+                >
+                  POST (multipart form)
+                </option>
+                <option
+                  value="PUT"
+                  data-i18n="tools:destinationSettings.methodPut"
+                >
+                  PUT (raw file, WebDAV)
+                </option>
+              </select>
+            </div>
+            <div id="field-name-row">
+              <label
+                for="destination-field-name"
+                class="block text-sm font-medium text-gray-300 mb-1"
+                data-i18n="tools:destinationSettings.fieldNameLabel"
+              >
+                File field name
+              </label>
+              <input
+                type="text"
+                id="destination-field-name"
+                placeholder="file"
+                class="w-full bg-gray-700 border border-gray-600 text-white rounded-lg p-2.5 text-sm"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label
+              for="destination-mode"
+              class="block text-sm font-medium text-gray-300 mb-1"
+              data-i18n="tools:destinationSettings.modeLabel"
+            >
+              When a tool produces a file
+            </label>
+            <select
+              id="destination-mode"
+              class="w-full bg-gray-700 border border-gray-600 text-white rounded-lg p-2.5 focus:ring-indigo-500 focus:border-indigo-500"
+            >
+              <option
+                value="download"
+                data-i18n="tools:destinationSettings.mode.download"
+              >
+                Download only
+              </option>
+              <option
+                value="send"
+                data-i18n="tools:destinationSettings.mode.send"
+              >
+                Send only
+              </option>
+              <option
+                value="both"
+                data-i18n="tools:destinationSettings.mode.both"
+              >
+                Download and send
+              </option>
+              <option
+                value="ask"
+                data-i18n="tools:destinationSettings.mode.ask"
+              >
+                Ask every time
+              </option>
+            </select>
+          </div>
+
+          <div>
+            <div class="flex items-center justify-between mb-2">
+              <span
+                class="text-sm font-medium text-gray-300"
+                data-i18n="tools:destinationSettings.headersLabel"
+                >Headers</span
+              >
+              <button
+                id="add-header"
+                class="px-3 py-1.5 bg-gray-600 hover:bg-gray-500 text-white rounded-lg text-xs font-medium transition-colors"
+                data-i18n="tools:destinationSettings.addRow"
+              >
+                Add
+              </button>
+            </div>
+            <div id="headers-list" class="space-y-2"></div>
+          </div>
+
+          <div id="extra-fields-row">
+            <div class="flex items-center justify-between mb-2">
+              <span
+                class="text-sm font-medium text-gray-300"
+                data-i18n="tools:destinationSettings.extraFieldsLabel"
+                >Extra form fields (POST only)</span
+              >
+              <button
+                id="add-extra-field"
+                class="px-3 py-1.5 bg-gray-600 hover:bg-gray-500 text-white rounded-lg text-xs font-medium transition-colors"
+                data-i18n="tools:destinationSettings.addRow"
+              >
+                Add
+              </button>
+            </div>
+            <div id="extra-fields-list" class="space-y-2"></div>
+            <p
+              class="text-xs text-gray-500 mt-2"
+              data-i18n="tools:destinationSettings.templatesHelp"
+            >
+              Values can contain the file name templates described in the
+              documentation; they are replaced when the file is sent.
+            </p>
+          </div>
+
+          <div class="flex flex-wrap gap-3">
+            <button
+              id="save-destination"
+              class="btn-gradient flex-1"
+              data-i18n="tools:destinationSettings.saveDestination"
+            >
+              Save Destination
+            </button>
+            <button
+              id="test-destination"
+              class="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded-lg text-sm font-medium transition-colors"
+              data-i18n="tools:destinationSettings.testButton"
+            >
+              Test
+            </button>
+            <button
+              id="cancel-destination"
+              class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg text-sm font-medium transition-colors"
+              data-i18n="common.cancel"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="flex gap-3 mt-6">
+          <button
+            id="clear-btn"
+            class="px-6 py-2.5 bg-red-600/20 hover:bg-red-600/30 text-red-400 rounded-lg font-medium transition-colors border border-red-600/50"
+            data-i18n="tools:destinationSettings.clearAll"
+          >
+            Remove All Destinations
+          </button>
+        </div>
+
+        <!-- CSP Notice -->
+        <div
+          class="mt-6 p-4 bg-gray-700/30 rounded-lg border border-gray-600/50"
+        >
+          <p class="text-xs text-gray-500">
+            <strong
+              class="text-gray-400"
+              data-i18n="tools:destinationSettings.cspTitle"
+              >Content-Security-Policy:</strong
+            >
+            <span data-i18n="tools:destinationSettings.cspDescription"
+              >A self-hosted BentoPDF only allows the origins listed in the
+              `connect-src` directive. Add your destination origin to
+              `VITE_DESTINATION_HOSTS` at build time, otherwise the browser
+              blocks the upload. The destination also has to answer the CORS
+              preflight for the method and headers you configure.</span
+            >
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Loader Modal -->
+    <div
+      id="loader-modal"
+      class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50"
+    >
+      <div
+        class="bg-gray-800 p-8 rounded-lg flex flex-col items-center gap-4 border border-gray-700 shadow-xl"
+      >
+        <div class="solid-spinner"></div>
+        <p
+          id="loader-text"
+          class="text-white text-lg font-medium"
+          data-i18n="loader.processing"
+        >
+          Processing...
+        </p>
+      </div>
+    </div>
+
+    <!-- Alert Modal -->
+    <div
+      id="alert-modal"
+      class="fixed inset-0 bg-gray-900 bg-opacity-90 flex items-center justify-center z-50 hidden"
+    >
+      <div
+        class="bg-gray-800 rounded-lg shadow-xl p-6 max-w-sm w-full border border-gray-700"
+      >
+        <h3
+          id="alert-title"
+          class="text-xl font-bold text-white mb-2"
+          data-i18n="alert.title"
+        >
+          Alert
+        </h3>
+        <p id="alert-message" class="text-gray-300 mb-6"></p>
+        <button
+          id="alert-ok"
+          class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors duration-200"
+          data-i18n="common.ok"
+        >
+          OK
+        </button>
+      </div>
+    </div>
+
+    {{> footer }}
+    <script type="module" src="/src/js/utils/lucide-init.ts"></script>
+    <script type="module" src="/src/js/utils/full-width.ts"></script>
+    <script type="module" src="/src/js/utils/simple-mode-footer.ts"></script>
+    <script
+      type="module"
+      src="/src/js/logic/destination-settings-page.ts"
+    ></script>
+    <script type="module" src="/src/js/mobileMenu.ts"></script>
+    <script type="module" src="/src/js/main.ts"></script>
+  </body>
+</html>

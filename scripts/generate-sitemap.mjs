@@ -11,7 +11,11 @@ const SITE_URL = (process.env.SITE_URL || 'https://www.bentopdf.com').replace(
   /\/+$/,
   ''
 );
-const EXCLUDED_PAGES = new Set(['404', 'wasm-settings']);
+const EXCLUDED_PAGES = new Set([
+  '404',
+  'wasm-settings',
+  'destination-settings',
+]);
 
 const languages = fs.readdirSync(LOCALES_DIR).filter((file) => {
   return fs.statSync(path.join(LOCALES_DIR, file)).isDirectory();

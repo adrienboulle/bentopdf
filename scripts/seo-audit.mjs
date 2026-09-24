@@ -14,7 +14,11 @@ const SITE_URL = (process.env.SITE_URL || 'https://www.bentopdf.com').replace(
 const BASE_PATH = (process.env.BASE_URL || '/').replace(/\/$/, '');
 const HOST = new URL(SITE_URL).hostname;
 
-const NOINDEX_ALLOWLIST = new Set(['404.html', 'wasm-settings.html']);
+const NOINDEX_ALLOWLIST = new Set([
+  '404.html',
+  'wasm-settings.html',
+  'destination-settings.html',
+]);
 const SKIP_DIRS = new Set([
   'assets',
   'docs',

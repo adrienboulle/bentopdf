@@ -825,6 +825,10 @@ export default defineConfig(() => {
           ),
           'deskew-pdf': resolve(__dirname, 'src/pages/deskew-pdf.html'),
           'wasm-settings': resolve(__dirname, 'src/pages/wasm-settings.html'),
+          'destination-settings': resolve(
+            __dirname,
+            'src/pages/destination-settings.html'
+          ),
           'bates-numbering': resolve(
             __dirname,
             'src/pages/bates-numbering.html'
