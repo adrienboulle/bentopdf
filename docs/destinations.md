@@ -100,28 +100,26 @@ percent-encoded. `Content-Type` is taken from the produced file.
 
 ## Content-Security-Policy
 
-BentoPDF ships a strict CSP generated at build time by
-`scripts/generate-security-headers.mjs`. A destination origin that is not in
-the `connect-src` directive is blocked by the browser, and the upload fails
-with a network error.
+BentoPDF ships a strict CSP. A destination origin that is not in the `connect-src` directive is blocked
+by the browser, and the upload fails with a network error. Three ways to allow yours, from the simplest:
 
-List the origins you upload to in `VITE_DESTINATION_HOSTS`, comma-separated:
-
-```bash
-VITE_DESTINATION_HOSTS=https://documents.example.com,https://files.example.com npm run build
-```
-
-Or as a Docker build argument:
+**Docker, no rebuild** — list the origins in `DESTINATION_HOSTS` (comma-separated); the container patches
+its CSP at start:
 
 ```bash
-docker build \
-  --build-arg VITE_DESTINATION_HOSTS=https://documents.example.com \
-  -t bentopdf .
+docker run -d -p 3000:8080 -e DESTINATION_HOSTS=https://documents.example.com ghcr.io/alam00000/bentopdf:latest
 ```
 
-The destination also has to accept the request from the browser: it must
-answer the CORS preflight for the method and the headers you configured, and
-return an `Access-Control-Allow-Origin` covering your BentoPDF origin.
+**Same origin, no CSP change at all** — put the destination under the BentoPDF origin behind your reverse
+proxy (for example `/api/upload` proxied to the document manager). This also removes the CORS
+requirement below, and lets the proxy add the user's identity or a token so nothing reaches the browser.
+
+**Build time** — `VITE_DESTINATION_HOSTS=https://documents.example.com npm run build`, or the same as a
+Docker `--build-arg`, when you build your own image anyway.
+
+The destination also has to accept the request from the browser (cross-origin): it must answer the CORS
+preflight for the method and the headers you configured, and return an `Access-Control-Allow-Origin`
+covering your BentoPDF origin. A same-origin path through your proxy needs none of this.
 
 ## Privacy and credentials
 
@@ -137,18 +135,41 @@ which is the default.
 
 ## Presetting destinations for all users
 
-Self-hosted deployments can ship a default configuration so users have nothing to set up. Pass
-`VITE_DESTINATIONS_DEFAULT` at build time with a JSON array of destinations; the first one becomes the
-active destination and its `mode` (`download`, `send`, `both` or `ask`) the default action. The preset only applies while the browser has no
-saved Destinations configuration: as soon as a user saves their own settings, those take precedence.
+Self-hosted deployments can ship a default configuration so users have nothing to set up: a JSON array of
+destinations, the first one becomes the active destination and its `mode` (`download`, `send`, `both` or
+`ask`) the default action. The preset only applies while the browser has no saved Destinations
+configuration: as soon as a user saves their own settings, those take precedence.
+
+**Runtime, `config.json`** (the same file that carries `disabledTools`), mounted or served next to
+`index.html` on any static host:
+
+```json
+{
+  "destinations": [
+    {
+      "name": "Documents",
+      "url": "https://documents.example.com/api/upload",
+      "method": "POST",
+      "fieldName": "document",
+      "mode": "both"
+    }
+  ]
+}
+```
+
+**Runtime, Docker** — `DESTINATIONS_DEFAULT` holds the same array; the container writes `config.json` at
+start when none is mounted:
 
 ```bash
-docker build \
-  --build-arg VITE_DESTINATION_HOSTS=https://docs.example.com \
-  --build-arg VITE_DESTINATIONS_DEFAULT='[{"name":"Documents","url":"https://docs.example.com/api/upload","method":"POST","fieldName":"document","mode":"both"}]' \
-  -t bentopdf .
+docker run -d -p 3000:8080 \
+  -e DESTINATION_HOSTS=https://documents.example.com \
+  -e DESTINATIONS_DEFAULT='[{"name":"Documents","url":"https://documents.example.com/api/upload","method":"POST","fieldName":"document","mode":"both"}]' \
+  ghcr.io/alam00000/bentopdf:latest
 ```
+
+**Build time** — `VITE_DESTINATIONS_DEFAULT` with the same array (`npm run build` or `--build-arg`). A
+runtime preset wins over a build-time one.
 
 A common pattern is to point the preset at a path on the BentoPDF origin itself and let the reverse proxy
 forward it to the document manager with the authenticated user's identity (for example Caddy `basic_auth`
-plus a `Remote-User` header): no token ever reaches the browser.
+plus a `Remote-User` header): no token ever reaches the browser, no CSP or CORS to configure.

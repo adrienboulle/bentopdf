@@ -342,4 +342,66 @@ describe('build-time preset (VITE_DESTINATIONS_DEFAULT)', () => {
     DestinationProvider.reload();
     expect(DestinationProvider.getAll()).toHaveLength(0);
   });
+
+  describe('runtime preset (config.json destinations)', () => {
+    const preset = [
+      {
+        name: 'Documents',
+        url: 'https://docs.example.com/api/upload',
+        method: 'POST',
+        fieldName: 'document',
+        mode: 'send',
+      },
+      { name: 'broken', url: 'http://insecure.example.com/' },
+    ];
+
+    afterEach(() => {
+      vi.unstubAllEnvs();
+      localStorage.clear();
+      DestinationProvider.reload();
+    });
+
+    it('applies the preset when nothing is stored, without persisting it', () => {
+      localStorage.clear();
+      DestinationProvider.reload();
+      expect(DestinationProvider.applyRuntimePreset(preset)).toBe(true);
+      const all = DestinationProvider.getAll();
+      expect(all).toHaveLength(1);
+      expect(all[0].url).toBe('https://docs.example.com/api/upload');
+      expect(DestinationProvider.getActiveId()).toBe(all[0].id);
+      expect(DestinationProvider.getDefaultAction()).toBe('send');
+      expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+    });
+
+    it('wins over the build-time preset', () => {
+      vi.stubEnv(
+        'VITE_DESTINATIONS_DEFAULT',
+        JSON.stringify([{ name: 'Build', url: 'https://build.example.com/' }])
+      );
+      localStorage.clear();
+      DestinationProvider.reload();
+      expect(DestinationProvider.getAll()[0].url).toBe(
+        'https://build.example.com/'
+      );
+      expect(DestinationProvider.applyRuntimePreset(preset)).toBe(true);
+      expect(DestinationProvider.getAll()[0].url).toBe(
+        'https://docs.example.com/api/upload'
+      );
+    });
+
+    it('is ignored once the user has saved their own configuration', () => {
+      DestinationProvider.save(makeDraft({ name: 'Mine' }));
+      expect(DestinationProvider.applyRuntimePreset(preset)).toBe(false);
+      expect(DestinationProvider.getAll().map((d) => d.name)).toEqual(['Mine']);
+    });
+
+    it('is ignored when no entry is valid', () => {
+      localStorage.clear();
+      DestinationProvider.reload();
+      expect(
+        DestinationProvider.applyRuntimePreset([{ url: 'http://nope/' }, 42])
+      ).toBe(false);
+      expect(DestinationProvider.getAll()).toHaveLength(0);
+    });
+  });
 });

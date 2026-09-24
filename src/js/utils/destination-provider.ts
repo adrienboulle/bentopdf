@@ -57,35 +57,58 @@ function emptyConfig(): DestinationsConfig {
 }
 
 /**
+ * Builds a configuration from a preset list supplied by the operator: the
+ * first valid destination becomes the active one and its mode the default
+ * action. Invalid entries are dropped; an empty result yields an empty config.
+ */
+function configFromPreset(list: unknown, source: string): DestinationsConfig {
+  const destinations: Destination[] = [];
+  for (const entry of Array.isArray(list) ? list : []) {
+    const destination = sanitizeDestination(entry);
+    if (destination) destinations.push(destination);
+  }
+  if (destinations.length === 0) {
+    if (Array.isArray(list) && list.length > 0) {
+      console.warn(
+        `[Destinations] Ignoring ${source}: no entry has a valid https URL.`
+      );
+    }
+    return emptyConfig();
+  }
+  return {
+    destinations,
+    activeDestinationId: destinations[0].id,
+    defaultAction: destinations[0].mode,
+  };
+}
+
+/**
  * Destinations preset at build time by the operator (`VITE_DESTINATIONS_DEFAULT`,
  * a JSON array of destinations). They are used when the browser has no stored
  * configuration yet, so a self-hosted deployment can work without any per-user
- * setup: the first preset becomes the active destination and its mode becomes
- * the default action. Users can still edit or remove them in Destinations
- * settings; their choice is persisted and takes precedence afterwards.
+ * setup. Users can still edit or remove them in Destinations settings; their
+ * choice is persisted and takes precedence afterwards. A runtime preset
+ * (`config.json`, see `applyRuntimePreset`) takes precedence over this one.
  */
 function presetConfig(): DestinationsConfig {
   const raw = import.meta.env.VITE_DESTINATIONS_DEFAULT;
   if (!raw) return emptyConfig();
   try {
-    const parsed = JSON.parse(raw) as unknown;
-    const destinations: Destination[] = [];
-    for (const entry of Array.isArray(parsed) ? parsed : []) {
-      const destination = sanitizeDestination(entry);
-      if (destination) destinations.push(destination);
-    }
-    if (destinations.length === 0) return emptyConfig();
-    return {
-      destinations,
-      activeDestinationId: destinations[0].id,
-      defaultAction: destinations[0].mode,
-    };
+    return configFromPreset(JSON.parse(raw), 'VITE_DESTINATIONS_DEFAULT');
   } catch (e) {
     console.warn(
       '[Destinations] Ignoring VITE_DESTINATIONS_DEFAULT: not a JSON array.',
       e
     );
     return emptyConfig();
+  }
+}
+
+function hasStoredConfig(): boolean {
+  try {
+    return localStorage.getItem(STORAGE_KEY) !== null;
+  } catch {
+    return false;
   }
 }
 
@@ -329,6 +352,20 @@ class DestinationProviderManager {
     } catch (e) {
       console.error('[Destinations] Failed to clear localStorage:', e);
     }
+  }
+
+  /**
+   * Applies a preset served at runtime (`config.json`, key `destinations`),
+   * with the same semantics as the build-time preset: only while the browser
+   * has no stored configuration, and it wins over the build-time one. Returns
+   * true when the preset was applied.
+   */
+  applyRuntimePreset(list: unknown): boolean {
+    if (hasStoredConfig()) return false;
+    const config = configFromPreset(list, 'config.json destinations');
+    if (config.destinations.length === 0) return false;
+    this.config = config;
+    return true;
   }
 
   /** Reloads from localStorage; used by tests and after an external change. */

@@ -1,4 +1,5 @@
 import type { AppConfig } from '@/types';
+import { DestinationProvider } from './destination-provider.js';
 
 const disabledToolsSet = new Set<string>(__DISABLED_TOOLS__);
 let runtimeConfigLoaded = false;
@@ -31,6 +32,9 @@ export async function loadRuntimeConfig(): Promise<void> {
       editorDisabledCategories = config.editorDisabledCategories.filter(
         (c): c is string => typeof c === 'string'
       );
+    }
+    if (Array.isArray(config.destinations)) {
+      DestinationProvider.applyRuntimePreset(config.destinations);
     }
   } catch (err) {
     console.warn('[LOAD_RUNTIME_CONFIG] Skipped runtime config:', err);

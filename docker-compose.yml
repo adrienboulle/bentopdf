@@ -14,3 +14,6 @@ services:
     # For IPv4-only environments
     #environment:
     #  - DISABLE_IPV6=true
+# Destinations without a rebuild (docs/destinations.md): origins allowed by the CSP, and a preset for all users
+#  - DESTINATION_HOSTS=https://documents.example.com
+#  - DESTINATIONS_DEFAULT=[{"name":"Documents","url":"https://documents.example.com/api/upload","method":"POST","mode":"both"}]
